@@ -1,6 +1,7 @@
 import sqlite3
 from datetime import datetime
 
+
 class Database:
     def __init__(self, db_name="student_system.db"):
         self.conn = sqlite3.connect(db_name)
@@ -8,11 +9,15 @@ class Database:
         self.init_tables()
 
     def init_tables(self):
-        self.cursor.execute('''CREATE TABLE IF NOT EXISTS students (
+        self.cursor.execute(
+            '''CREATE TABLE IF NOT EXISTS students (
                                 sap TEXT PRIMARY KEY, name TEXT, course TEXT,
-                                program TEXT, age INTEGER, semester INTEGER, email TEXT)''')
-        self.cursor.execute('''CREATE TABLE IF NOT EXISTS logs (
-                                action TEXT, details TEXT, timestamp TEXT)''')
+                                program TEXT, age INTEGER, semester INTEGER, email TEXT)'''
+        )
+        self.cursor.execute(
+            '''CREATE TABLE IF NOT EXISTS logs (
+                                action TEXT, details TEXT, timestamp TEXT)'''
+        )
         self.conn.commit()
 
     def get_student(self, sap):
@@ -26,6 +31,7 @@ class Database:
 
     def log_action(self, user, action, details):
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self.cursor.execute("INSERT INTO logs VALUES (?, ?, ?)",
-                            (action, f"[{user}] {details}", timestamp))
+        self.cursor.execute(
+            "INSERT INTO logs VALUES (?, ?, ?)", (action, f"[{user}] {details}", timestamp)
+        )
         self.conn.commit()

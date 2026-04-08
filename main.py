@@ -4,58 +4,98 @@ from database import Database
 from auth import LoginWindow
 from processor import DataProcessor
 
-class StudentManagementSystem:
-    def __init__(self, root, current_user):
+
+class StudentApp:
+    def __init__(self, root, user):
         self.root = root
-        self.current_user = current_user
-        self.root.title(f"Manager Pro - User: {self.current_user}")
-        self.root.geometry("1200x700")
+        self.user = user
+        self.root.title(f"Student Manager Pro - {self.user}")
+        self.root.geometry("1200x750")
 
         self.db = Database()
         self.engine = DataProcessor(self.db.conn)
 
+        self.setup_styles()
         self.setup_ui()
         self.refresh_table()
 
+    def setup_styles(self):
+        style = ttk.Style()
+        style.theme_use("clam")
+
+        # Professional Header Styling
+        style.configure(
+            "Treeview.Heading",
+            background="#2c3e50",
+            foreground="white",
+            font=("Arial", 10, "bold"),
+            padding=5,
+        )
+
+        # Row styling
+        style.configure("Treeview", rowheight=30, font=("Arial", 10))
+        style.map("Treeview", background=[('selected', '#3498db')])
+
     def setup_ui(self):
-        # LEFT: Control Panel
-        self.left = tk.Frame(self.root, width=300, padx=20, pady=20, bd=1, relief="solid", bg="#ffffff")
+        # Sidebar
+        self.left = tk.Frame(
+            self.root, width=320, bg="#ffffff", padx=20, pady=20, bd=1, relief="solid"
+        )
         self.left.pack(side="left", fill="y")
 
-        tk.Label(self.left, text="STUDENT EDITOR", font=("Arial", 12, "bold"), bg="#ffffff").pack(pady=(0,20))
-
         self.inputs = {}
-        fields = [("SAP ID", "sap"), ("Name", "name"), ("Course", "course"),
-                  ("Program", "program"), ("Age", "age"), ("Semester", "semester"), ("Email", "email")]
+        fields = [
+            ("SAP ID", "sap"),
+            ("Name", "name"),
+            ("Course", "course"),
+            ("Program", "program"),
+            ("Age", "age"),
+            ("Semester", "semester"),
+            ("Email", "email"),
+        ]
 
         for label, key in fields:
-            tk.Label(self.left, text=label, bg="#ffffff", font=("Arial", 8, "bold")).pack(anchor="w")
+            tk.Label(self.left, text=label, bg="#ffffff", font=("Arial", 8, "bold")).pack(
+                anchor="w"
+            )
             self.inputs[key] = ttk.Entry(self.left)
             self.inputs[key].pack(fill="x", pady=(0, 10))
 
-        # Action Buttons
-        ttk.Button(self.left, text="SAVE / UPDATE", command=self.save_record).pack(fill="x", pady=2)
-        ttk.Button(self.left, text="DELETE", command=self.delete_record).pack(fill="x", pady=2)
-        ttk.Button(self.left, text="EXPORT CSV", command=self.handle_export).pack(fill="x", pady=2)
-        ttk.Button(self.left, text="VIEW LOGS", command=self.show_logs).pack(fill="x", pady=2)
+        ttk.Button(self.left, text="SAVE / SMART UPDATE", command=self.save_record).pack(
+            fill="x", pady=5
+        )
+        ttk.Button(self.left, text="DELETE RECORD", command=self.delete_record).pack(
+            fill="x", pady=2
+        )
+        ttk.Button(self.left, text="EXPORT TO CSV", command=self.export).pack(
+            fill="x", pady=2
+        )
 
-        # STATS DISPLAY (Improved)
-        tk.Label(self.left, text="--- LIVE STATISTICS ---", bg="#ffffff", font=("Arial", 8, "bold")).pack(pady=(20, 5))
-        self.lbl_stats = tk.Label(self.left, text="Loading...", justify="left", fg="#2c3e50", bg="#ecf0f1", padx=10, pady=10, font=("Courier", 10))
-        self.lbl_stats.pack(fill="x")
+        self.stats_box = tk.Label(
+            self.left,
+            text="",
+            bg="#ecf0f1",
+            justify="left",
+            font=("Courier", 10),
+            padx=10,
+            pady=10,
+        )
+        self.stats_box.pack(fill="x", pady=20)
 
-        # RIGHT: Table & Search
+        # Right Side (Table)
         self.right = tk.Frame(self.root, padx=20, pady=20)
         self.right.pack(side="right", fill="both", expand=True)
 
-        search_frame = tk.Frame(self.right)
-        search_frame.pack(fill="x", pady=(0, 15))
-        self.search_ent = ttk.Entry(search_frame)
-        self.search_ent.pack(side="left", fill="x", expand=True, padx=(0, 10))
-        ttk.Button(search_frame, text="Search", command=self.handle_search).pack(side="left", padx=2)
-        ttk.Button(search_frame, text="Reset", command=self.refresh_table).pack(side="left")
+        search_f = tk.Frame(self.right)
+        search_f.pack(fill="x", pady=(0, 15))
+        self.s_ent = ttk.Entry(search_f)
+        self.s_ent.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        ttk.Button(search_f, text="Search", command=self.search).pack(side="left", padx=2)
+        ttk.Button(search_f, text="Reset", command=self.refresh_table).pack(side="left")
 
-        self.tree = ttk.Treeview(self.right, columns=[f[1] for f in fields], show="headings")
+        self.tree = ttk.Treeview(
+            self.right, columns=[f[1] for f in fields], show="headings"
+        )
         for label, key in fields:
             self.tree.heading(key, text=label.upper())
             self.tree.column(key, width=100, anchor="center")
@@ -63,75 +103,81 @@ class StudentManagementSystem:
         self.tree.bind("<<TreeviewSelect>>", self.on_select)
 
     def refresh_table(self, rows=None):
-        for i in self.tree.get_children(): self.tree.delete(i)
+        for i in self.tree.get_children():
+            self.tree.delete(i)
         if rows is None:
-            self.search_ent.delete(0, tk.END)
+            self.s_ent.delete(0, tk.END)
             rows = self.db.cursor.execute("SELECT * FROM students").fetchall()
-
-        for r in rows: self.tree.insert("", "end", values=r)
-
-        # UPDATE STATS BOX
-        self.lbl_stats.config(text=self.engine.get_stats())
-
-    def handle_search(self):
-        query = self.search_ent.get().strip()
-        if query: self.refresh_table(self.db.search_students(query))
+        for r in rows:
+            self.tree.insert("", "end", values=r)
+        self.stats_box.config(text=self.engine.get_stats())
 
     def save_record(self):
-        gui_data = {k: v.get().strip() for k, v in self.inputs.items()}
-        sap = gui_data['sap']
-        if len(sap) != 9:
+        gui = {k: v.get().strip() for k, v in self.inputs.items()}
+        if len(gui['sap']) != 9:
             messagebox.showerror("Error", "SAP ID must be 9 digits")
             return
 
-        existing = self.db.get_student(sap)
+        existing = self.db.get_student(gui['sap'])
         if existing:
-            # Smart Merge
-            field_order = ["sap", "name", "course", "program", "age", "semester", "email"]
-            final = [gui_data[k] if gui_data[k] != "" else existing[i] for i, k in enumerate(field_order)]
-            self.db.cursor.execute("UPDATE students SET name=?, course=?, program=?, age=?, semester=?, email=? WHERE sap=?",
-                                   (final[1], final[2], final[3], final[4], final[5], final[6], sap))
+            # SMART MERGE: Keep old if new is blank
+            f_order = ["sap", "name", "course", "program", "age", "semester", "email"]
+            final = [
+                gui[k] if gui[k] != "" else existing[i] for i, k in enumerate(f_order)
+            ]
+            self.db.cursor.execute(
+                "UPDATE students SET name=?, course=?, program=?, age=?, semester=?, email=? WHERE sap=?",
+                (final[1], final[2], final[3], final[4], final[5], final[6], gui['sap']),
+            )
+            self.db.log_action(self.user, "UPDATE", f"Modified SAP {gui['sap']}")
         else:
-            if any(v == "" for v in gui_data.values()):
+            if any(v == "" for v in gui.values()):
                 messagebox.showwarning("Incomplete", "Fill all fields for new students")
                 return
-            self.db.cursor.execute("INSERT INTO students VALUES (?,?,?,?,?,?,?)", tuple(gui_data.values()))
+            self.db.cursor.execute(
+                "INSERT INTO students VALUES (?,?,?,?,?,?,?)", tuple(gui.values())
+            )
+            self.db.log_action(self.user, "ADD", f"New Student {gui['sap']}")
 
         self.db.conn.commit()
         self.refresh_table()
-        messagebox.showinfo("Success", "Record Processed")
+        messagebox.showinfo("Success", "Data Synchronized")
 
     def delete_record(self):
         sap = self.inputs['sap'].get().strip()
-        if sap and messagebox.askyesno("Confirm", f"Delete {sap}?"):
+        if sap and messagebox.askyesno("Confirm", f"Delete SAP {sap}?"):
             self.db.cursor.execute("DELETE FROM students WHERE sap=?", (sap,))
             self.db.conn.commit()
+            self.db.log_action(self.user, "DELETE", f"Removed {sap}")
             self.refresh_table()
 
-    def handle_export(self):
-        path = filedialog.asksaveasfilename(defaultextension=".csv")
-        if path: self.engine.export_csv(path); messagebox.showinfo("Done", "Exported")
+    def search(self):
+        q = self.s_ent.get().strip()
+        if q:
+            self.refresh_table(self.db.search_students(q))
 
-    def show_logs(self):
-        win = tk.Toplevel(self.root)
-        t = ttk.Treeview(win, columns=(1,2,3), show="headings")
-        t.heading(1, text="Action"); t.heading(2, text="Details"); t.heading(3, text="Time")
-        t.pack(fill="both", expand=True)
-        for r in self.db.cursor.execute("SELECT * FROM logs ORDER BY timestamp DESC").fetchall():
-            t.insert("", "end", values=r)
+    def export(self):
+        path = filedialog.asksaveasfilename(defaultextension=".csv")
+        if path:
+            self.engine.export_csv(path)
+            messagebox.showinfo("Done", "Exported")
 
     def on_select(self, e):
         sel = self.tree.selection()
-        if not sel: return
+        if not sel:
+            return
         vals = self.tree.item(sel[0])['values']
         for i, k in enumerate(self.inputs.keys()):
-            self.inputs[k].delete(0, tk.END); self.inputs[k].insert(0, vals[i])
+            self.inputs[k].delete(0, tk.END)
+            self.inputs[k].insert(0, vals[i])
+
 
 def start(user):
     login_root.destroy()
     app_root = tk.Tk()
-    StudentManagementSystem(app_root, user)
+    StudentApp(app_root, user)
     app_root.mainloop()
+
 
 if __name__ == "__main__":
     login_root = tk.Tk()
