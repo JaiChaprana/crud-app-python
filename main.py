@@ -1,256 +1,139 @@
-import sqlite3
-import pandas as pd
-import numpy as np
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
-from datetime import datetime
+from database import Database
+from auth import LoginWindow
+from processor import DataProcessor
 
-# ==========================================
-# 1. UPDATED LOGIN SYSTEM (Multi-User)
-# ==========================================
-class LoginWindow:
-    def __init__(self, root, on_success):
-        self.root = root
-        self.on_success = on_success
-        self.root.title("System Auth")
-        self.root.geometry("350x450")
-        self.root.configure(bg="#ffffff")
-
-        # MULTI-USER DATA
-        # We use a dictionary for easy 'Username: Password' mapping
-        self.users_db = {
-            "jai": "123",
-            "A Sai Rao": "1234",
-            "admin": "12345"
-        }
-
-        # UI Layout
-        tk.Label(root, text="STUDENT SYSTEM", font=("Segoe UI", 16, "bold"), bg="#ffffff").pack(pady=(40, 10))
-        tk.Label(root, text="Secure Login", font=("Segoe UI", 10), bg="#ffffff", fg="gray").pack(pady=(0, 30))
-
-        tk.Label(root, text="Username", bg="#ffffff", font=("Segoe UI", 9)).pack(anchor="w", padx=50)
-        self.user_ent = ttk.Entry(root)
-        self.user_ent.pack(fill="x", padx=50, pady=(0, 15))
-
-        tk.Label(root, text="Password", bg="#ffffff", font=("Segoe UI", 9)).pack(anchor="w", padx=50)
-        self.pass_ent = ttk.Entry(root, show="*")
-        self.pass_ent.pack(fill="x", padx=50, pady=(0, 30))
-
-        btn = ttk.Button(root, text="LOGIN", command=self.check_auth)
-        btn.pack(fill="x", padx=50, pady=5)
-
-        # Bind the 'Enter' key to login for convenience
-        self.root.bind('<Return>', lambda event: self.check_auth())
-
-    def check_auth(self):
-        u = self.user_ent.get().strip()
-        p = self.pass_ent.get().strip()
-        # Check if username exists and password matches
-        if u in self.users_db and self.users_db[u] == p:
-            self.on_success(u) # Pass the username to the main app for logging
-        else:
-            messagebox.showerror("Auth Failed", "Invalid Username or Password!")
-
-# ==========================================
-# 2. MAIN APPLICATION
-# ==========================================
 class StudentManagementSystem:
     def __init__(self, root, current_user):
         self.root = root
-        self.current_user = current_user # Store who logged in
-        self.root.title(f"Student Manager Pro - Logged in as: {self.current_user}")
-        self.root.geometry("1300x700")
-        self.root.configure(bg="#f4f7f6")
+        self.current_user = current_user
+        self.root.title(f"Manager Pro - User: {self.current_user}")
+        self.root.geometry("1200x700")
 
-        self.db_path = "student_system.db"
-        self.init_db()
-        self.setup_styles()
-        self.create_widgets()
+        self.db = Database()
+        self.engine = DataProcessor(self.db.conn)
+
+        self.setup_ui()
         self.refresh_table()
 
-        # Log the login event
-        self.log_action("LOGIN", f"User '{self.current_user}' accessed the system")
+    def setup_ui(self):
+        # LEFT: Control Panel
+        self.left = tk.Frame(self.root, width=300, padx=20, pady=20, bd=1, relief="solid", bg="#ffffff")
+        self.left.pack(side="left", fill="y")
 
-        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
-
-    def init_db(self):
-        self.conn = sqlite3.connect(self.db_path)
-        self.cursor = self.conn.cursor()
-        self.cursor.execute('''CREATE TABLE IF NOT EXISTS students (
-                                sap TEXT PRIMARY KEY, name TEXT, course TEXT,
-                                program TEXT, age INTEGER, semester INTEGER, email TEXT)''')
-        self.cursor.execute('''CREATE TABLE IF NOT EXISTS logs (
-                                action TEXT, details TEXT, timestamp TEXT)''')
-        self.conn.commit()
-
-    def log_action(self, action, details):
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        # Include the user in the log details
-        full_details = f"[{self.current_user}] {details}"
-        self.cursor.execute("INSERT INTO logs VALUES (?, ?, ?)", (action, full_details, timestamp))
-        self.conn.commit()
-
-    def setup_styles(self):
-        self.style = ttk.Style()
-        self.style.theme_use("clam")
-        self.style.configure("Treeview", rowheight=30, font=('Segoe UI', 10))
-        self.style.configure("Treeview.Heading", font=('Segoe UI', 10, 'bold'))
-
-    def create_widgets(self):
-        # LEFT PANEL
-        form_frame = tk.Frame(self.root, bg="#ffffff", padx=25, pady=25, borderwidth=1, relief="solid")
-        form_frame.pack(side="left", fill="y", padx=20, pady=20)
-
-        tk.Label(form_frame, text="STUDENT EDITOR", font=("Segoe UI", 12, "bold"), bg="#ffffff").pack(pady=(0, 10))
-        self.lbl_status = tk.Label(form_frame, text="Mode: Adding New", fg="#0056b3", bg="#ffffff", font=("Segoe UI", 9, "italic"))
-        self.lbl_status.pack(pady=(0, 15))
+        tk.Label(self.left, text="STUDENT EDITOR", font=("Arial", 12, "bold"), bg="#ffffff").pack(pady=(0,20))
 
         self.inputs = {}
-        fields = [("SAP ID", "sap"), ("Full Name", "name"), ("Course", "course"),
+        fields = [("SAP ID", "sap"), ("Name", "name"), ("Course", "course"),
                   ("Program", "program"), ("Age", "age"), ("Semester", "semester"), ("Email", "email")]
 
         for label, key in fields:
-            tk.Label(form_frame, text=label, bg="#ffffff", font=("Segoe UI", 9, "bold")).pack(anchor="w")
-            ent = ttk.Entry(form_frame)
-            ent.pack(fill="x", pady=(0, 10))
-            self.inputs[key] = ent
+            tk.Label(self.left, text=label, bg="#ffffff", font=("Arial", 8, "bold")).pack(anchor="w")
+            self.inputs[key] = ttk.Entry(self.left)
+            self.inputs[key].pack(fill="x", pady=(0, 10))
 
-        ttk.Button(form_frame, text="SAVE / UPDATE", command=self.save_record).pack(fill="x", pady=5)
-        ttk.Button(form_frame, text="CLEAR FORM", command=self.clear_form).pack(fill="x", pady=5)
+        # Action Buttons
+        ttk.Button(self.left, text="SAVE / UPDATE", command=self.save_record).pack(fill="x", pady=2)
+        ttk.Button(self.left, text="DELETE", command=self.delete_record).pack(fill="x", pady=2)
+        ttk.Button(self.left, text="EXPORT CSV", command=self.handle_export).pack(fill="x", pady=2)
+        ttk.Button(self.left, text="VIEW LOGS", command=self.show_logs).pack(fill="x", pady=2)
 
-        tk.Label(form_frame, text="DATA EXCHANGE", font=("Segoe UI", 9, "bold"), bg="#ffffff").pack(pady=(20, 5))
-        ttk.Button(form_frame, text="IMPORT CSV", command=self.import_csv).pack(fill="x", pady=2)
-        ttk.Button(form_frame, text="EXPORT CSV", command=self.export_csv).pack(fill="x", pady=2)
-        ttk.Button(form_frame, text="VIEW AUDIT LOGS", command=self.show_audit_logs).pack(fill="x", pady=(15, 0))
+        # STATS DISPLAY (Improved)
+        tk.Label(self.left, text="--- LIVE STATISTICS ---", bg="#ffffff", font=("Arial", 8, "bold")).pack(pady=(20, 5))
+        self.lbl_stats = tk.Label(self.left, text="Loading...", justify="left", fg="#2c3e50", bg="#ecf0f1", padx=10, pady=10, font=("Courier", 10))
+        self.lbl_stats.pack(fill="x")
 
-        # RIGHT PANEL
-        right_frame = tk.Frame(self.root, bg="#f4f7f6", padx=20, pady=20)
-        right_frame.pack(side="right", fill="both", expand=True)
+        # RIGHT: Table & Search
+        self.right = tk.Frame(self.root, padx=20, pady=20)
+        self.right.pack(side="right", fill="both", expand=True)
 
-        search_frame = tk.Frame(right_frame, bg="#f4f7f6")
+        search_frame = tk.Frame(self.right)
         search_frame.pack(fill="x", pady=(0, 15))
         self.search_ent = ttk.Entry(search_frame)
         self.search_ent.pack(side="left", fill="x", expand=True, padx=(0, 10))
-        ttk.Button(search_frame, text="Search", command=self.search_data).pack(side="left")
-        ttk.Button(search_frame, text="Delete Selected", command=self.delete_record).pack(side="left", padx=5)
+        ttk.Button(search_frame, text="Search", command=self.handle_search).pack(side="left", padx=2)
+        ttk.Button(search_frame, text="Reset", command=self.refresh_table).pack(side="left")
 
-        cols = ("sap", "name", "course", "program", "age", "semester", "email")
-        self.tree = ttk.Treeview(right_frame, columns=cols, show="headings")
-        for col in cols:
-            self.tree.heading(col, text=col.upper())
-            self.tree.column(col, width=110, anchor="center")
+        self.tree = ttk.Treeview(self.right, columns=[f[1] for f in fields], show="headings")
+        for label, key in fields:
+            self.tree.heading(key, text=label.upper())
+            self.tree.column(key, width=100, anchor="center")
         self.tree.pack(fill="both", expand=True)
-        self.tree.bind("<<TreeviewSelect>>", self.load_selected)
+        self.tree.bind("<<TreeviewSelect>>", self.on_select)
 
-        footer = tk.Frame(right_frame, bg="#f4f7f6")
-        footer.pack(fill="x", pady=(15, 0))
-        self.lbl_count = tk.Label(footer, text="Records: 0", font=("Segoe UI", 10, "bold"), bg="#f4f7f6")
-        self.lbl_count.pack(side="left")
-        ttk.Button(footer, text="Run Analytics", command=self.show_stats).pack(side="right")
+    def refresh_table(self, rows=None):
+        for i in self.tree.get_children(): self.tree.delete(i)
+        if rows is None:
+            self.search_ent.delete(0, tk.END)
+            rows = self.db.cursor.execute("SELECT * FROM students").fetchall()
 
-    # --- CSV & AUDIT LOGIC ---
-    def export_csv(self):
-        try:
-            df = pd.read_sql_query("SELECT * FROM students", self.conn)
-            file_path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
-            if file_path:
-                df.to_csv(file_path, index=False)
-                messagebox.showinfo("Export Success", f"Saved to {file_path}")
-                self.log_action("EXPORT", f"Exported {len(df)} records")
-        except Exception as e: messagebox.showerror("Error", str(e))
+        for r in rows: self.tree.insert("", "end", values=r)
 
-    def import_csv(self):
-        file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv")])
-        if not file_path: return
-        try:
-            df = pd.read_csv(file_path)
-            req = ["sap", "name", "course", "program", "age", "semester", "email"]
-            if not all(c in df.columns for c in req):
-                messagebox.showerror("Error", "Invalid CSV Headers")
-                return
-            for _, row in df.iterrows():
-                self.cursor.execute("INSERT OR REPLACE INTO students VALUES (?,?,?,?,?,?,?)", tuple(row[req]))
-            self.conn.commit()
-            self.refresh_table()
-            self.log_action("IMPORT", f"Imported from {file_path}")
-            messagebox.showinfo("Success", "Import Complete")
-        except Exception as e: messagebox.showerror("Error", str(e))
+        # UPDATE STATS BOX
+        self.lbl_stats.config(text=self.engine.get_stats())
 
-    def show_audit_logs(self):
-        audit_win = tk.Toplevel(self.root)
-        audit_win.title("System Audit Logs")
-        audit_win.geometry("700x400")
-        cols = ("Action", "User & Details", "Timestamp")
-        tree = ttk.Treeview(audit_win, columns=cols, show="headings")
-        for col in cols:
-            tree.heading(col, text=col)
-            tree.column(col, width=200 if col=="User & Details" else 150)
-        tree.pack(fill="both", expand=True, padx=10, pady=10)
-        self.cursor.execute("SELECT * FROM logs ORDER BY timestamp DESC")
-        for row in self.cursor.fetchall(): tree.insert("", "end", values=row)
-
-    # --- CRUD LOGIC ---
-    def refresh_table(self, data=None):
-        for item in self.tree.get_children(): self.tree.delete(item)
-        if data is None:
-            self.cursor.execute("SELECT * FROM students")
-            data = self.cursor.fetchall()
-        for row in data: self.tree.insert("", "end", values=row)
-        self.cursor.execute("SELECT COUNT(*) FROM students")
-        self.lbl_count.config(text=f"Total: {self.cursor.fetchone()[0]}")
+    def handle_search(self):
+        query = self.search_ent.get().strip()
+        if query: self.refresh_table(self.db.search_students(query))
 
     def save_record(self):
-        d = {k: v.get().strip() for k, v in self.inputs.items()}
-        if not (d['sap'].isdigit() and len(d['sap']) == 9):
-            messagebox.showerror("Error", "SAP ID must be 9 digits.")
+        gui_data = {k: v.get().strip() for k, v in self.inputs.items()}
+        sap = gui_data['sap']
+        if len(sap) != 9:
+            messagebox.showerror("Error", "SAP ID must be 9 digits")
             return
-        self.cursor.execute("INSERT OR REPLACE INTO students VALUES (?,?,?,?,?,?,?)", tuple(d.values()))
-        self.conn.commit()
-        self.log_action("SAVE", f"Saved student SAP: {d['sap']}")
-        self.refresh_table(); self.clear_form()
+
+        existing = self.db.get_student(sap)
+        if existing:
+            # Smart Merge
+            field_order = ["sap", "name", "course", "program", "age", "semester", "email"]
+            final = [gui_data[k] if gui_data[k] != "" else existing[i] for i, k in enumerate(field_order)]
+            self.db.cursor.execute("UPDATE students SET name=?, course=?, program=?, age=?, semester=?, email=? WHERE sap=?",
+                                   (final[1], final[2], final[3], final[4], final[5], final[6], sap))
+        else:
+            if any(v == "" for v in gui_data.values()):
+                messagebox.showwarning("Incomplete", "Fill all fields for new students")
+                return
+            self.db.cursor.execute("INSERT INTO students VALUES (?,?,?,?,?,?,?)", tuple(gui_data.values()))
+
+        self.db.conn.commit()
+        self.refresh_table()
+        messagebox.showinfo("Success", "Record Processed")
 
     def delete_record(self):
         sap = self.inputs['sap'].get().strip()
-        if not sap or not messagebox.askyesno("Confirm", f"Delete {sap}?"): return
-        self.cursor.execute("DELETE FROM students WHERE sap=?", (sap,))
-        self.conn.commit()
-        self.log_action("DELETE", f"Removed SAP: {sap}")
-        self.refresh_table(); self.clear_form()
+        if sap and messagebox.askyesno("Confirm", f"Delete {sap}?"):
+            self.db.cursor.execute("DELETE FROM students WHERE sap=?", (sap,))
+            self.db.conn.commit()
+            self.refresh_table()
 
-    def search_data(self):
-        q = self.search_ent.get().strip()
-        self.cursor.execute("SELECT * FROM students WHERE name LIKE ? OR sap LIKE ?", (f'%{q}%', f'%{q}%'))
-        self.refresh_table(self.cursor.fetchall())
+    def handle_export(self):
+        path = filedialog.asksaveasfilename(defaultextension=".csv")
+        if path: self.engine.export_csv(path); messagebox.showinfo("Done", "Exported")
 
-    def show_stats(self):
-        df = pd.read_sql_query("SELECT age, semester FROM students", self.conn)
-        if not df.empty:
-            msg = f"Avg Age: {np.mean(df['age']):.1f}\nCommon Sem: {df['semester'].mode()[0]}"
-            messagebox.showinfo("Stats", msg)
+    def show_logs(self):
+        win = tk.Toplevel(self.root)
+        t = ttk.Treeview(win, columns=(1,2,3), show="headings")
+        t.heading(1, text="Action"); t.heading(2, text="Details"); t.heading(3, text="Time")
+        t.pack(fill="both", expand=True)
+        for r in self.db.cursor.execute("SELECT * FROM logs ORDER BY timestamp DESC").fetchall():
+            t.insert("", "end", values=r)
 
-    def load_selected(self, e):
+    def on_select(self, e):
         sel = self.tree.selection()
         if not sel: return
         vals = self.tree.item(sel[0])['values']
-        for i, key in enumerate(self.inputs.keys()):
-            self.inputs[key].delete(0, tk.END); self.inputs[key].insert(0, vals[i])
-        self.lbl_status.config(text=f"Editing: {vals[1]}", fg="red")
+        for i, k in enumerate(self.inputs.keys()):
+            self.inputs[k].delete(0, tk.END); self.inputs[k].insert(0, vals[i])
 
-    def clear_form(self):
-        for ent in self.inputs.values(): ent.delete(0, tk.END)
-        self.lbl_status.config(text="Mode: Adding New", fg="#0056b3")
-
-    def on_closing(self):
-        self.conn.close(); self.root.destroy()
-
-# --- RUNTIME ---
-def start_app(username):
+def start(user):
     login_root.destroy()
-    main_root = tk.Tk()
-    app = StudentManagementSystem(main_root, username) # Pass user to main app
-    main_root.mainloop()
+    app_root = tk.Tk()
+    StudentManagementSystem(app_root, user)
+    app_root.mainloop()
 
 if __name__ == "__main__":
     login_root = tk.Tk()
-    login_screen = LoginWindow(login_root, start_app)
+    LoginWindow(login_root, start)
     login_root.mainloop()
